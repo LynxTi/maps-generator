@@ -93,49 +93,5 @@ export const asyncBatchResponseSchema = z
   })
   .openapi('AsyncBatchResponse');
 
-export const jobProgressSchema = z
-  .object({
-    id: z.string(),
-    status: jobStatusSchema,
-    total: z.number().int(),
-    queued: z.number().int(),
-    running: z.number().int(),
-    succeeded: z.number().int(),
-    failed: z.number().int(),
-    cancelled: z.number().int(),
-    createdAt: z.string(),
-    updatedAt: z.string(),
-    finishedAt: z.string().nullable(),
-  })
-  .openapi('JobProgress');
-
-export const jobItemSchema = z
-  .object({
-    id: z.string(),
-    index: z.number().int(),
-    status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
-    lat: z.number(),
-    lon: z.number(),
-    place: z.string().nullable(),
-    mapId: z.string().nullable(),
-    url: z.string().nullable(),
-    cached: z.boolean().nullable(),
-    error: z
-      .object({
-        code: z.string(),
-        message: z.string(),
-      })
-      .nullable(),
-  })
-  .openapi('JobItem');
-
-export const jobItemsPageSchema = z
-  .object({
-    jobId: z.string(),
-    nextCursor: z.number().int().nullable(),
-    items: z.array(jobItemSchema),
-  })
-  .openapi('JobItemsPage');
-
 export type MapRequestInput = z.infer<typeof mapRequestSchema>;
 export type BatchRequestInput = z.infer<typeof batchRequestSchema>;

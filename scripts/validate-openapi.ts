@@ -7,13 +7,7 @@ if (!doc.openapi || !doc.info?.title || !doc.paths) {
   process.exit(1);
 }
 
-const requiredPaths = [
-  '/api/v1/maps',
-  '/api/v1/maps/batch',
-  '/api/v1/jobs/{id}',
-  '/healthz',
-  '/readyz',
-];
+const requiredPaths = ['/api/v1/maps', '/api/v1/maps/batch'];
 
 for (const p of requiredPaths) {
   if (!doc.paths[p]) {

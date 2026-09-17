@@ -18,7 +18,7 @@ JSON { lat, lon, place? }
 
 Сторонняя API пишет `url` в свою БД один раз. Пока файла нет, `GET url` даёт `404` (без кэша) — у себя показывают заглушку. Когда рендер закончился, тот же URL отдаёт WebP.
 
-Батч резервирует URL на каждую точку сразу. Крупный батч ещё создаёт job для прогресса. Express только принимает и отдаёт JSON.
+Батч резервирует URL на каждую точку сразу. Крупный батч рисуется внутри сервиса; клиенту достаточно сохранить `url` и поллить файл. Express только принимает и отдаёт JSON.
 
 ## Стек
 
@@ -187,79 +187,11 @@ curl -s -X POST http://localhost:3000/api/v1/maps \
 }
 ```
 
-`items` уже содержат URL — их можно сразу сохранить. Job нужен, если хотите прогресс, cancel или retry. Браузер для тысяч точек не подходит.
+`items` уже содержат URL — их можно сразу сохранить. Крупный батч рисуется внутри сервиса; клиенту достаточно поллить сами `url`. Браузер для тысяч точек не подходит.
 
-Если активных job уже `MAX_QUEUED_JOBS` — `429 TOO_MANY_JOBS`.
+Если активных внутренних job уже `MAX_QUEUED_JOBS` — `429 TOO_MANY_JOBS`.
 
-### `GET /api/v1/jobs/:id`
-
-Прогресс.
-
-```json
-{
-  "id": "...",
-  "status": "running",
-  "total": 200,
-  "queued": 50,
-  "running": 1,
-  "succeeded": 140,
-  "failed": 9,
-  "cancelled": 0,
-  "createdAt": "2026-09-16T09:00:00.000Z",
-  "updatedAt": "2026-09-16T09:12:00.000Z",
-  "finishedAt": null
-}
-```
-
-| `status` | Смысл |
-|---|---|
-| `queued` | ещё не стартовал или снова в очереди |
-| `running` | есть item в работе |
-| `succeeded` | все терминальные, без ошибок |
-| `partial` | закончился, часть item упала |
-| `failed` | закончился, успешных нет |
-| `cancelled` | все оставшиеся queued отменены |
-
-Текущий нативный рендер отменить нельзя: cancel снимает только ещё не начатые item.
-
-### `GET /api/v1/jobs/:id/items?cursor=&limit=`
-
-Страница результатов. `cursor` — `index` последней полученной записи, `limit` 1…500 (по умолчанию `JOB_POLL_DEFAULT_LIMIT`).
-
-```json
-{
-  "jobId": "...",
-  "nextCursor": 0,
-  "items": [
-    {
-      "id": "...",
-      "index": 0,
-      "status": "succeeded",
-      "lat": 48.8566,
-      "lon": 2.3522,
-      "place": "Paris",
-      "mapId": "...",
-      "url": "http://localhost:3000/storage/....webp",
-      "cached": false,
-      "error": null
-    }
-  ]
-}
-```
-
-Если `nextCursor` не `null` — запросить следующую страницу с этим значением.
-
-### `POST /api/v1/jobs/:id/cancel`
-
-Отменяет queued items. Уже рисующийся item дорисуется.
-
-### `POST /api/v1/jobs/:id/retry`
-
-Возвращает в очередь только `failed`. Нельзя, пока job `queued`/`running` — будет `409 JOB_STILL_ACTIVE`.
-
-### `GET /storage/{uuid}.webp`
-
-Готовая картинка. Имя только UUID, кэш `immutable`. Не-UUID и пути вроде `.tmp/...` — `404`.
+Картинки отдаются с `GET /storage/{uuid}.webp` (это не API-ручка, а файл по зарезервированному URL). Имя только UUID, кэш `immutable`. Не-UUID и пути вроде `.tmp/...` — `404`. Пока файла нет — `404` с `Cache-Control: no-store`.
 
 ### `GET /healthz` и `GET /readyz`
 
@@ -287,11 +219,10 @@ curl -s -X POST http://localhost:3000/api/v1/maps \
 | 400 | `VALIDATION_ERROR` | тело не прошло Zod |
 | 400 | `INVALID_COORDINATES` | широта/долгота вне диапазона (сервис) |
 | 400 | `BATCH_TOO_LARGE` / `EMPTY_BATCH` | размер батча |
-| 404 | `JOB_NOT_FOUND` / `NOT_FOUND` | нет job или файла |
+| 404 | `NOT_FOUND` | файла ещё нет или путь невалидный |
 | 409 | `IDEMPOTENCY_IN_PROGRESS` | тот же ключ ещё обрабатывается |
 | 409 | `IDEMPOTENCY_KEY_REUSED` | тот же ключ, другое тело |
-| 409 | `JOB_STILL_ACTIVE` | retry на живом job |
-| 429 | `TOO_MANY_JOBS` | слишком много активных job |
+| 429 | `TOO_MANY_JOBS` | слишком много активных внутренних job |
 | 429 | `QUEUE_SATURATED` | очередь рендера полная (`MAX_RENDER_QUEUE`) |
 | 500 | `RENDER_FAILED` | не удалось нарисовать |
 | 502 | `TILE_PROVIDER_UNAVAILABLE` | style/тайлы недоступны |
@@ -323,9 +254,8 @@ curl -s -X POST http://localhost:3000/api/v1/maps \
 | `RENDER_RETRY_BACKOFF_MS` | пауза между попытками, растёт с номером | `1000` |
 | `SYNC_BATCH_LIMIT` | порог sync/async batch, до 100 | `50` |
 | `MAX_BATCH_ITEMS` | жёсткий потолок батча | `2000` |
-| `MAX_QUEUED_JOBS` | сколько job могут висеть активными | `10` |
+| `MAX_QUEUED_JOBS` | сколько внутренних job могут висеть активными | `10` |
 | `MAX_RENDER_QUEUE` | глубина очереди рендера, дальше `429` | `50` |
-| `JOB_POLL_DEFAULT_LIMIT` | default `limit` для job items | `100` |
 | `ENABLE_DOCS` | `/docs` и `/openapi.json` | в prod по умолчанию `false` |
 | `LOG_LEVEL` | pino | `info` |
 | `TILE_FETCH_TIMEOUT_MS` | timeout style/тайлов | `15000` |
@@ -378,5 +308,4 @@ docker compose up --build
 1. Для одной точки — `POST /api/v1/maps`, сразу сохранить `url`.
 2. Для пачки — `POST /api/v1/maps/batch`, сохранить `items[].url`.
 3. В UI — своя заглушка, пока `GET url` не станет `200`. URL не менять.
-4. Крупный батч: можно поллить `/jobs/:id` для прогресса; для записи картинки это не обязательно.
-5. Повтор чанка безопасен: тот же URL + `Idempotency-Key` на создание job.
+4. Повтор чанка безопасен: тот же URL + `Idempotency-Key` на batch.

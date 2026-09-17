@@ -8,7 +8,7 @@ describe('OpenAPI document', () => {
     assert.equal(doc.openapi.startsWith('3.'), true);
     assert.ok(doc.paths['/api/v1/maps']);
     assert.ok(doc.paths['/api/v1/maps/batch']);
-    assert.ok(doc.paths['/api/v1/jobs/{id}']);
+    assert.equal(Object.keys(doc.paths ?? {}).length, 2);
     assert.equal(doc.components?.securitySchemes?.ApiKeyAuth, undefined);
   });
 });

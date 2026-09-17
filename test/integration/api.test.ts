@@ -161,31 +161,18 @@ describe('HTTP API integration', () => {
     assert.equal(idempotent.body.jobId, jobId);
     assert.equal(idempotent.body.items[0].url, res.body.items[0].url);
 
-    let progress = await request(ctx.app).get(`/api/v1/jobs/${jobId}`);
-
-    const started = Date.now();
-    while (
-      progress.body.status !== 'succeeded' &&
-      progress.body.status !== 'failed' &&
-      Date.now() - started < 15_000
-    ) {
-      await new Promise((r) => setTimeout(r, 200));
-      progress = await request(ctx.app).get(`/api/v1/jobs/${jobId}`);
+    for (const item of res.body.items) {
+      const file = await waitForWebp(ctx.app, fileNameFromUrl(item.url), 15_000);
+      assert.equal(file.status, 200);
     }
-
-    assert.equal(progress.body.status, 'succeeded');
-    assert.equal(progress.body.succeeded, 3);
-
-    const items = await request(ctx.app).get(`/api/v1/jobs/${jobId}/items`);
-    assert.equal(items.status, 200);
-    assert.equal(items.body.items.length, 3);
-    assert.ok(items.body.items[0].url);
   });
 
   it('serves openapi and docs', async () => {
     const spec = await request(ctx.app).get('/openapi.json');
     assert.equal(spec.status, 200);
     assert.ok(spec.body.paths['/api/v1/maps']);
+    assert.ok(spec.body.paths['/api/v1/maps/batch']);
+    assert.equal(spec.body.paths['/api/v1/jobs/{id}'], undefined);
 
     const docs = await request(ctx.app).get('/docs/');
     assert.equal(docs.status, 200);
@@ -220,39 +207,6 @@ describe('HTTP API integration', () => {
     assert.equal(again.body.url, created.body.url);
     assert.equal(again.body.cached, false);
     await waitForWebp(ctx.app, fileName);
-  });
-
-  it('pages job items by index cursor', async () => {
-    const res = await request(ctx.app)
-      .post('/api/v1/maps/batch')
-      .send({
-        items: [
-          { lat: 30, lon: 30 },
-          { lat: 31, lon: 31 },
-          { lat: 32, lon: 32 },
-        ],
-      });
-    assert.equal(res.status, 202);
-    const jobId = res.body.jobId as string;
-
-    const started = Date.now();
-    let progress = await request(ctx.app).get(`/api/v1/jobs/${jobId}`);
-    while (progress.body.status === 'queued' || progress.body.status === 'running') {
-      if (Date.now() - started > 15_000) break;
-      await new Promise((r) => setTimeout(r, 150));
-      progress = await request(ctx.app).get(`/api/v1/jobs/${jobId}`);
-    }
-
-    const page1 = await request(ctx.app).get(`/api/v1/jobs/${jobId}/items`).query({ limit: 1 });
-    assert.equal(page1.status, 200);
-    assert.equal(page1.body.items.length, 1);
-    assert.equal(page1.body.nextCursor, 0);
-
-    const page2 = await request(ctx.app)
-      .get(`/api/v1/jobs/${jobId}/items`)
-      .query({ limit: 10, cursor: page1.body.nextCursor });
-    assert.equal(page2.body.items.length, 2);
-    assert.equal(page2.body.nextCursor, null);
   });
 
   it('returns 409 when idempotency key is already in progress', async () => {

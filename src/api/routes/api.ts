@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { getEnv } from '../../config/env.js';
 import { getPrisma } from '../../lib/prisma.js';
 import { hashJson } from '../../lib/hash.js';
 import { AppError } from '../../lib/errors.js';
@@ -18,7 +17,6 @@ export type ApiDeps = {
 
 export function createApiRouter(deps: ApiDeps): Router {
   const router = Router();
-  const env = getEnv();
   const idempotency = new IdempotencyRepository();
 
   router.get('/healthz', (_req, res) => {
@@ -113,49 +111,6 @@ export function createApiRouter(deps: ApiDeps): Router {
       }
     },
   );
-
-  router.get('/api/v1/jobs/:id', async (req, res, next) => {
-    try {
-      const progress = await deps.jobService.getJobProgress(req.params.id!);
-      res.json(progress);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.get('/api/v1/jobs/:id/items', async (req, res, next) => {
-    try {
-      const limitRaw = req.query.limit ? Number(req.query.limit) : env.JOB_POLL_DEFAULT_LIMIT;
-      const limit = Number.isFinite(limitRaw)
-        ? Math.min(Math.max(limitRaw, 1), 500)
-        : env.JOB_POLL_DEFAULT_LIMIT;
-      const cursorRaw = req.query.cursor !== undefined ? Number(req.query.cursor) : undefined;
-      const cursor =
-        cursorRaw !== undefined && Number.isFinite(cursorRaw) ? Math.max(0, cursorRaw) : undefined;
-      const page = await deps.jobService.listJobItems(req.params.id!, cursor, limit);
-      res.json(page);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.post('/api/v1/jobs/:id/cancel', async (req, res, next) => {
-    try {
-      const progress = await deps.jobService.cancelJob(req.params.id!);
-      res.json(progress);
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.post('/api/v1/jobs/:id/retry', async (req, res, next) => {
-    try {
-      const progress = await deps.jobService.retryJob(req.params.id!);
-      res.json(progress);
-    } catch (error) {
-      next(error);
-    }
-  });
 
   return router;
 }
