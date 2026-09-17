@@ -1,0 +1,24 @@
+{
+  "include": [
+    "src/config/**/*.ts",
+    "src/lib/coordinates.ts",
+    "src/lib/errors.ts",
+    "src/lib/queue.ts",
+    "src/services/**/*.ts",
+    "src/storage/**/*.ts",
+    "src/schemas/**/*.ts",
+    "src/openapi/**/*.ts",
+    "src/api/middleware/**/*.ts"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "dist/**",
+    "test/**"
+  ],
+  "reporter": ["text", "lcov"],
+  "check-coverage": true,
+  "lines": 80,
+  "functions": 80,
+  "branches": 65,
+  "all": true
+}

@@ -1,0 +1,55 @@
+services:
+  mongo:
+    image: mongo:7
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo:
+        condition: service_started
+    restart: "no"
+    entrypoint:
+      - bash
+      - -lc
+      - |
+        for i in {1..30}; do
+          mongosh --host mongo:27017 --eval 'rs.initiate({_id:"rs0", members:[{_id:0, host:"mongo:27017"}]})' && break
+          sleep 2
+        done
+
+  api:
+    build: .
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      PUBLIC_BASE_URL: http://localhost:3000
+      DATABASE_URL: mongodb://mongo:27017/map_images?replicaSet=rs0
+      STORAGE_DIR: /app/storage
+      ENABLE_DOCS: "false"
+      LOG_LEVEL: info
+      RENDER_VERSION: v1
+      SYNC_BATCH_LIMIT: 50
+      MAX_BATCH_ITEMS: 2000
+      MAX_RENDER_QUEUE: 50
+    volumes:
+      - map_storage:/app/storage
+
+volumes:
+  mongo_data:
+  map_storage:

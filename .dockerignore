@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.github
+.idea
+coverage
+out
+storage
+.tmp
+*.md
+.env
+.env.*
+test
